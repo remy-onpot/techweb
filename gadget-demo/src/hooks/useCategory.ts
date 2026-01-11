@@ -1,7 +1,15 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Product, CategorySection } from '@/lib/types';
-import { matchesRules } from '@/lib/filter-engine';
+import { Product } from '@/lib/types';
+import { matchesRules, FilterRule } from '@/lib/filter-engine';
+
+export interface CategorySection {
+  id: string;
+  title: string;
+  section_type: 'product_row' | 'brand_row';
+  filter_rules: FilterRule[];
+  sort_order: number;
+}
 
 export interface SectionWithData extends CategorySection {
   products: Product[];
@@ -14,63 +22,82 @@ export const useCategory = (slug: string) => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchCategoryData();
-  }, [slug]);
+    async function fetchData() {
+      try {
+        setLoading(true);
 
-  const fetchCategoryData = async () => {
-    setLoading(true);
-    try {
-      // 1. Fetch the Layout Configuration (Admin Rules)
-      const { data: layoutData, error: layoutError } = await supabase
-        .from('category_sections')
-        .select('*')
-        .eq('category_slug', slug)
-        .eq('is_active', true)
-        .order('sort_order', { ascending: true });
+        // 1. Fetch Layout Configuration
+        const { data: layoutData, error: layoutError } = await supabase
+          .from('category_sections')
+          .select('*')
+          .eq('category_slug', slug)
+          .eq('is_active', true)
+          .order('sort_order', { ascending: true });
 
-      if (layoutError) throw layoutError;
+        if (layoutError) throw layoutError;
 
-      // 2. Fetch Raw Products for this Category
-      // Optimization: We fetch ALL products for the category once, then filter in memory.
-      // This is much faster than making 10 DB calls for 10 rows.
-      const { data: productData, error: prodError } = await supabase
-        .from('products')
-        .select('*')
-        .eq('category', slug);
+        // 2. Fetch ALL products for this category (With IMAGE FIX)
+        const { data: productsRaw, error: prodError } = await supabase
+          .from('products')
+          .select(`
+            *,
+            images:base_images,          
+            variants:product_variants ( price )
+          `)
+          .eq('is_active', true)
+          .ilike('category', slug);
 
-      if (prodError) throw prodError;
+        if (prodError) throw prodError;
 
-      const rawProducts = (productData as any[]) || [];
-      setAllProducts(rawProducts); // Keep raw list for "View All" grid later
+        // 3. Normalize Data (Fix Prices & Images)
+        const cleanProducts = productsRaw.map((p: any) => {
+           const prices = p.variants?.map((v: any) => v.price) || [];
+           const minPrice = prices.length > 0 ? Math.min(...prices) : (p.base_price || 0);
+           return { 
+             ...p, 
+             price: minPrice, 
+             images: p.images || [], // Ensure array exists
+             variants: p.variants || []
+           };
+        });
 
-      // 3. THE MAGIC: Apply Rules to Create Rows
-      const processedSections = (layoutData as CategorySection[]).map(section => {
-        // If it's a Brand Row, we don't need to filter products yet (handled by UI)
-        if (section.section_type === 'brand_row') {
-           return { ...section, products: rawProducts }; 
+        setAllProducts(cleanProducts);
+
+        // 4. Default Sections if none exist in DB
+        let processedSections = layoutData as CategorySection[];
+        
+        if (!processedSections || processedSections.length === 0) {
+           // Create fallback sections so the page isn't empty
+           processedSections = [
+             { id: 'def-1', title: 'Featured', section_type: 'product_row', filter_rules: [], sort_order: 1 },
+             { id: 'def-2', title: 'Shop by Brand', section_type: 'brand_row', filter_rules: [], sort_order: 2 }
+           ];
         }
 
-        // If it's a Product Row, run the Engine
-        const filtered = rawProducts.filter(p => matchesRules(p, section.filter_rules));
-        
-        // Limit to 8 items for the horizontal scroll (Performance)
-        return { ...section, products: filtered.slice(0, 8) };
-      });
+        // 5. Apply Rules Engine
+        const hydratedSections = processedSections.map(section => {
+          if (section.section_type === 'brand_row') {
+             return { ...section, products: cleanProducts };
+          }
+          
+          // Filter products based on rules
+          const filtered = cleanProducts.filter(p => matchesRules(p, section.filter_rules));
+          return { ...section, products: filtered.slice(0, 8) }; // Limit row to 8
+        });
 
-      // Filter out empty sections to avoid ugly gaps
-      const validSections = processedSections.filter(s => 
-        s.section_type === 'brand_row' || s.products.length > 0
-      );
+        // Remove empty sections
+        setSections(hydratedSections.filter(s => s.products.length > 0));
 
-      setSections(validSections);
-
-    } catch (err: any) {
-      console.error("Category Load Failed:", err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
+      } catch (err: any) {
+        console.error("Category Load Error:", err);
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
     }
-  };
+
+    if (slug) fetchData();
+  }, [slug]);
 
   return { sections, allProducts, loading, error };
 };

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-
+import { DesktopSuggestion } from '@/components/shop/DesktopSuggestion';
 // 1. Load Inter (Standard for modern e-commerce)
 const inter = Inter({ 
   subsets: ["latin"],
@@ -23,6 +23,7 @@ export default function RootLayout({
     <html lang="en" className={inter.variable}>
       <body className="font-sans antialiased bg-[#F8FAFC] text-slate-900 selection:bg-orange-100 selection:text-orange-900">
         {children}
+        <DesktopSuggestion /> {/* <-- Drop it here */}
       </body>
     </html>
   );

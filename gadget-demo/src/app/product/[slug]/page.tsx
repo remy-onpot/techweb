@@ -9,7 +9,8 @@ import { ProductGallery } from '@/components/product/ProductGallery';
 import { ProductConfigurator } from '@/components/product/ProductConfigurator';
 import { Loader2, ArrowLeft, PackagePlus, Zap } from 'lucide-react';
 import Link from 'next/link';
-import { ProductCard } from '@/components/ProductCard'; // Re-using your card for related items
+import { ProductCard } from '@/components/ProductCard'; 
+import { ProductGridSkeleton } from '@/components/skeletons/ProductCardSkeleton';
 
 export default function ProductDetailPage() {
   const params = useParams();
@@ -28,13 +29,13 @@ export default function ProductDetailPage() {
       // A. Get Parent Product
       const { data: parentData, error: parentError } = await supabase
         .from('products')
-.select('*, images:base_images, price:base_price')
+        .select('*, images:base_images, price:base_price')
         .eq('slug', slug)
         .single();
 
       if (parentError || !parentData) {
         setLoading(false);
-        return; // Handle 404 later
+        return; 
       }
 
       setProduct(parentData as Product);
@@ -47,15 +48,31 @@ export default function ProductDetailPage() {
 
       if (variantData) setVariants(variantData as any);
 
-      // C. Get "Smart" Related Items (Same Category)
-      const { data: relatedData } = await supabase
+      // C. Get "Smart" Related Items (FIXED IMAGE & PRICE BUG)
+      const { data: relatedRaw } = await supabase
         .from('products')
-        .select('*')
+        .select(`
+            *, 
+            images:base_images,          // <--- Fixes Image Break
+            variants:product_variants(price) // <--- Fixes Price showing 0
+        `)
         .eq('category', parentData.category)
         .neq('id', parentData.id)
         .limit(4);
         
-      if (relatedData) setRelatedItems(relatedData as any);
+      if (relatedRaw) {
+        // Normalize related items so ProductCard can read them
+        const cleanRelated = relatedRaw.map((p: any) => {
+            const prices = p.variants?.map((v: any) => v.price) || [];
+            const minPrice = prices.length > 0 ? Math.min(...prices) : (p.base_price || 0);
+            return {
+                ...p,
+                price: minPrice,
+                images: p.images || []
+            };
+        });
+        setRelatedItems(cleanRelated);
+      }
 
       setLoading(false);
     };
@@ -64,34 +81,32 @@ export default function ProductDetailPage() {
   }, [slug]);
 
   // 2. INITIALIZE LOGIC ENGINE
-  // Safe default: if product isn't loaded yet, pass empty arrays
   const logic = useProductLogic(product as Product, variants);
 
   // 3. IMAGE LOGIC
-  // If the selected variant has its own images, use them. Otherwise fallback to parent.
   const activeImages = logic.currentVariant?.images && logic.currentVariant.images.length > 0
     ? logic.currentVariant.images
     : product?.images || [];
 
-  if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-slate-300 w-8 h-8"/></div>;
+  if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-orange-500 w-8 h-8"/></div>;
   if (!product) return <div className="h-screen flex items-center justify-center text-slate-500">Product not found</div>;
 
   return (
     <div className="min-h-screen bg-white pb-20">
       
       {/* HEADER: Breadcrumb */}
-      <div className="border-b border-gray-100 bg-white sticky top-0 z-20">
+      <div className="border-b border-gray-100 bg-white/80 backdrop-blur-md sticky top-0 z-30">
         <div className="container mx-auto px-4 h-16 flex items-center gap-4">
-           <Link href={`/category/${product.category}`} className="p-2 -ml-2 hover:bg-gray-50 rounded-full transition-colors text-slate-500">
-             <ArrowLeft size={20} />
+           <Link href={`/category/${product.category}`} className="p-2 -ml-2 hover:bg-gray-50 rounded-full transition-colors text-slate-500 group">
+             <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
            </Link>
-           <span className="text-sm font-bold text-slate-400 capitalize">{product.category}</span>
-           <span className="text-slate-300">/</span>
+           <span className="text-sm font-bold text-slate-400 capitalize hidden md:inline">{product.category}</span>
+           <span className="text-slate-300 hidden md:inline">/</span>
            <span className="text-sm font-bold text-slate-900 truncate">{product.name}</span>
         </div>
       </div>
 
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 py-8 max-w-[1400px]">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20">
            
            {/* LEFT: GALLERY */}
@@ -99,14 +114,14 @@ export default function ProductDetailPage() {
               <ProductGallery images={activeImages} />
               
               {/* Tech Specs Summary (Desktop) */}
-              <div className="hidden lg:block mt-12 border-t border-gray-100 pt-8">
+              <div className="hidden lg:block mt-12 border-t border-gray-100 pt-8 animate-in slide-in-from-bottom-4 duration-700">
                  <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
                     <Zap size={18} className="text-orange-500" /> Technical Highlights
                  </h3>
                  <div className="grid grid-cols-2 gap-4 text-sm">
                     {logic.currentVariant && Object.entries(logic.currentVariant.specs).map(([key, val]) => (
                        <div key={key} className="flex justify-between border-b border-gray-50 pb-2">
-                          <span className="text-slate-500 capitalize">{key.replace('_', ' ')}</span>
+                          <span className="text-slate-500 capitalize font-medium">{key.replace('_', ' ')}</span>
                           <span className="font-bold text-slate-900">{val}</span>
                        </div>
                     ))}
@@ -150,26 +165,35 @@ export default function ProductDetailPage() {
         </div>
       </div>
 
-      {/* FOOTER: UPSELL ENGINE */}
-      <section className="bg-gray-50 py-16 mt-16 border-t border-gray-200">
-         <div className="container mx-auto px-4">
-            <div className="flex items-center gap-3 mb-8">
-               <div className="bg-orange-100 p-2 rounded-lg">
-                  <PackagePlus className="text-orange-600" size={24} />
-               </div>
-               <div>
-                  <h2 className="text-xl font-black text-slate-900">You might also like</h2>
-                  <p className="text-sm text-slate-500">Popular items in {product.category}</p>
-               </div>
-            </div>
-            
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-               {relatedItems.map(item => (
-                  <ProductCard key={item.id} product={item} />
-               ))}
-            </div>
-         </div>
-      </section>
+      {/* FOOTER: UPSELL ENGINE (Re-using ProductCard) */}
+      {relatedItems.length > 0 && (
+          <section className="bg-slate-50 py-16 mt-16 border-t border-gray-200">
+             <div className="container mx-auto px-4 max-w-[1400px]">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+                   <div className="flex items-center gap-3">
+                      <div className="bg-orange-500 p-2.5 rounded-xl shadow-lg shadow-orange-500/20">
+                         <PackagePlus className="text-white" size={24} />
+                      </div>
+                      <div>
+                         <h2 className="text-2xl font-black text-slate-900">You might also like</h2>
+                         <p className="text-sm font-medium text-slate-500">Popular {product.category} picks</p>
+                      </div>
+                   </div>
+                   <Link href={`/category/${product.category}`} className="text-sm font-bold text-orange-600 hover:text-orange-700 flex items-center gap-1">
+                      View all {product.category}s <ArrowLeft className="rotate-180" size={16}/>
+                   </Link>
+                </div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                   {relatedItems.map(item => (
+                      <div key={item.id} className="h-full">
+                         <ProductCard product={item} />
+                      </div>
+                   ))}
+                </div>
+             </div>
+          </section>
+      )}
 
     </div>
   );

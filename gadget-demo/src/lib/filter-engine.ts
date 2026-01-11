@@ -1,54 +1,56 @@
-import { Product, FilterRule } from "./types";
+import { Product } from "./types";
 
-/**
- * Helper to safely access nested object properties
- * e.g. getNestedValue(product, 'specs.ram') -> "16GB"
- */
-const getNestedValue = (obj: any, path: string) => {
-  return path.split('.').reduce((prev, curr) => prev ? prev[curr] : null, obj);
-};
+export interface FilterRule {
+  key: string; 
+  operator: 'eq' | 'neq' | 'gt' | 'lt' | 'gte' | 'lte' | 'contains';
+  value: string | number;
+  field?: string; // Add optional legacy support
+}
 
-/**
- * THE MATCHER
- * Checks if a single product satisfies ALL rules in a list (AND logic)
- */
-export const matchesRules = (product: Product, rules: FilterRule[]): boolean => {
-  if (!rules || rules.length === 0) return true; // No rules = Show everything
+export const matchesRules = (product: Product, rules: FilterRule[] | null): boolean => {
+  if (!rules || rules.length === 0) return true; 
 
   return rules.every(rule => {
-    const rawValue = getNestedValue(product, rule.field);
-    
-    // 1. Handle Missing Data
-    if (rawValue === undefined || rawValue === null) return false;
+    // 1. SAFETY CHECK: Get the property name safely
+    // We check for 'key' (new format) OR 'field' (old format)
+    const propertyName = rule.key || rule.field;
 
-    // 2. Normalize Values for Comparison
-    const productValue = String(rawValue).toLowerCase();
-    const ruleValue = String(rule.value).toLowerCase();
-    const productNum = parseFloat(String(rawValue));
-    const ruleNum = parseFloat(String(rule.value));
+    // If neither exists, this rule is broken. Skip it (return true) so the app doesn't crash.
+    if (!propertyName) return true;
 
-    // 3. Apply Operators
+    let productValue: any;
+
+    // 2. Handle nested keys like 'specs.Storage'
+    if (propertyName.startsWith('specs.')) {
+      const specKey = propertyName.split('.')[1]; // e.g., 'Storage'
+      const specs = product.specs as Record<string, any>;
+      
+      // Case-insensitive lookup: Find 'storage', 'Storage', 'STORAGE'
+      const foundKey = Object.keys(specs || {}).find(k => k.toLowerCase() === specKey.toLowerCase());
+      productValue = foundKey ? specs[foundKey] : undefined;
+    } else {
+      // Standard keys like 'price', 'brand'
+      productValue = (product as any)[propertyName];
+    }
+
+    if (productValue === undefined || productValue === null) return false;
+
+    // 3. Normalize values for comparison
+    const valA = String(productValue).toLowerCase();
+    const valB = String(rule.value).toLowerCase();
+    const numA = Number(productValue);
+    const numB = Number(rule.value);
+
+    // 4. Run the operator check
     switch (rule.operator) {
-      case 'eq':
-        return productValue === ruleValue;
-      
-      case 'contains':
-        return productValue.includes(ruleValue);
-      
-      case 'gt':
-        return !isNaN(productNum) && !isNaN(ruleNum) && productNum > ruleNum;
-      
-      case 'lt':
-        return !isNaN(productNum) && !isNaN(ruleNum) && productNum < ruleNum;
-        
-        case 'gte': // Greater than OR Equal (>=)
-        return !isNaN(productNum) && !isNaN(ruleNum) && productNum >= ruleNum;
-      
-      case 'lte': // Less than OR Equal (<=)
-        return !isNaN(productNum) && !isNaN(ruleNum) && productNum <= ruleNum;
-        
-      default:
-        return false;
+      case 'eq': return valA === valB;
+      case 'neq': return valA !== valB;
+      case 'contains': return valA.includes(valB);
+      case 'gt': return !isNaN(numA) && !isNaN(numB) && numA > numB;
+      case 'lt': return !isNaN(numA) && !isNaN(numB) && numA < numB;
+      case 'gte': return !isNaN(numA) && !isNaN(numB) && numA >= numB;
+      case 'lte': return !isNaN(numA) && !isNaN(numB) && numA <= numB;
+      default: return false;
     }
   });
 };

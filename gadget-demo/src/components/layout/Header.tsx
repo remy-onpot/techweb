@@ -2,12 +2,13 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ShoppingCart, Search, Menu, X } from 'lucide-react';
+import { ShoppingCart, Menu, X } from 'lucide-react'; // Search removed (handled by component)
 import { useStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
+import { HeaderSearch } from './HeaderSearch'; // <--- Import the new component
 
 export const Header = () => {
-  const { cart, isAdminMode, toggleAdmin } = useStore();
+  const { cart } = useStore();
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -28,62 +29,63 @@ export const Header = () => {
     >
       <div className="container mx-auto px-4 flex items-center justify-between gap-4">
         
-        {/* LOGO MATCHING THE IMAGE */}
-        <Link href="/" className="flex items-center gap-0.5 z-50 select-none">
-           {/* 'Payless' in Cyan Blue */}
-           <span className="font-black text-2xl md:text-3xl tracking-tighter text-[#00AEEF]">
+        {/* LOGO */}
+        <Link href="/" className="flex items-center gap-0.5 z-50 select-none group">
+           <span className="font-black text-2xl md:text-3xl tracking-tighter text-[#00AEEF] group-hover:opacity-80 transition-opacity">
              Payless
            </span>
-           {/* '4tech' in White on Orange Box */}
-           <span className="bg-[#F7931E] text-white px-1.5 py-0.5 font-black text-2xl md:text-3xl tracking-tighter leading-none -mb-1">
+           <span className="bg-[#F7931E] text-white px-1.5 py-0.5 font-black text-2xl md:text-3xl tracking-tighter leading-none -mb-1 group-hover:scale-105 transition-transform">
              4tech
            </span>
         </Link>
 
-        {/* Desktop Search */}
-        <div className="hidden md:flex flex-1 max-w-md mx-auto relative group">
-           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-[#F7931E] transition-colors" />
-           <input 
-             placeholder="Search laptops, consoles..." 
-             className="w-full bg-gray-100/80 border-transparent border focus:bg-white focus:border-orange-200 rounded-full py-2.5 pl-10 pr-4 outline-none transition-all text-sm font-medium" 
-           />
+        {/* DESKTOP SMART SEARCH */}
+        <div className="hidden md:block flex-1 mx-4">
+           <HeaderSearch /> 
         </div>
 
-        {/* Actions */}
-        <div className="flex items-center gap-4 z-50">
-           <button 
-             onClick={toggleAdmin} 
-             className="hidden md:block text-[10px] font-black text-slate-400 hover:text-[#F7931E] border border-slate-200 px-2 py-1 rounded uppercase transition-colors"
-           >
-             {isAdminMode ? 'Admin Mode' : 'Staff Mode'}
-           </button>
-
-           <Link href="/cart" className="relative p-2.5 bg-gray-100 rounded-full hover:bg-orange-50 text-slate-700 hover:text-[#F7931E] transition-colors">
-              <ShoppingCart size={20} />
+        {/* ACTIONS */}
+        <div className="flex items-center gap-3 z-50">
+           <Link href="/cart" className="relative p-2.5 bg-gray-100 rounded-full hover:bg-orange-50 text-slate-700 hover:text-[#F7931E] transition-colors group">
+              <ShoppingCart size={20} className="group-hover:scale-110 transition-transform" />
               {cart.length > 0 && (
-                <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 border-2 border-white rounded-full text-[10px] font-bold text-white flex items-center justify-center">
+                <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 border-2 border-white rounded-full text-[10px] font-bold text-white flex items-center justify-center animate-in zoom-in">
                   {cart.length}
                 </span>
               )}
            </Link>
            
-           <button className="md:hidden p-2" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
+           <button className="md:hidden p-2 text-slate-700" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
              {mobileMenuOpen ? <X /> : <Menu />}
            </button>
         </div>
       </div>
       
-      {/* Mobile Menu */}
+      {/* MOBILE MENU */}
       {mobileMenuOpen && (
         <div className="absolute top-full left-0 w-full bg-white border-b border-gray-100 p-4 flex flex-col gap-4 md:hidden shadow-xl animate-in slide-in-from-top-5">
-           <input placeholder="Search..." className="w-full bg-gray-100 p-3 rounded-xl" />
-           <nav className="flex flex-col gap-2 font-bold text-slate-600">
-              <Link href="/category/laptop" className="p-2 hover:bg-gray-50 rounded-lg">Laptops</Link>
-              <Link href="/category/phone" className="p-2 hover:bg-gray-50 rounded-lg">Phones</Link>
-              <Link href="/category/gaming" className="p-2 hover:bg-gray-50 rounded-lg">Gaming</Link>
+           
+           {/* MOBILE SMART SEARCH */}
+           <HeaderSearch isMobile={true} onClose={() => setMobileMenuOpen(false)} />
+
+           <nav className="flex flex-col gap-1 font-bold text-slate-600 mt-2">
+              <Link href="/category/laptop" className="p-3 hover:bg-gray-50 rounded-lg flex justify-between items-center group" onClick={() => setMobileMenuOpen(false)}>
+                Laptops <ArrowRightIcon className="w-4 h-4 text-gray-300 group-hover:text-orange-400" />
+              </Link>
+              <Link href="/category/phone" className="p-3 hover:bg-gray-50 rounded-lg flex justify-between items-center group" onClick={() => setMobileMenuOpen(false)}>
+                Phones <ArrowRightIcon className="w-4 h-4 text-gray-300 group-hover:text-orange-400" />
+              </Link>
+              <Link href="/category/gaming" className="p-3 hover:bg-gray-50 rounded-lg flex justify-between items-center group" onClick={() => setMobileMenuOpen(false)}>
+                Gaming <ArrowRightIcon className="w-4 h-4 text-gray-300 group-hover:text-orange-400" />
+              </Link>
            </nav>
         </div>
       )}
     </header>
   );
 };
+
+// Helper Icon
+const ArrowRightIcon = ({ className }: { className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+);
