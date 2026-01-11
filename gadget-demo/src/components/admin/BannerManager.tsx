@@ -1,172 +1,184 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { HeroSlide, Product } from '@/lib/types';
-import { Trash2, Upload, Plus, Link as LinkIcon, Loader2, ImageIcon, CheckCircle } from 'lucide-react';
+import { Save, Loader2, Globe, Phone, MapPin, MessageCircle, Facebook, Instagram, Linkedin, Twitter } from 'lucide-react';
 
-export const BannerManager = () => {
-  const [slides, setSlides] = useState<HeroSlide[]>([]);
-  const [products, setProducts] = useState<Product[]>([]); // For the dropdown
-  const [loading, setLoading] = useState(false);
-  const [uploading, setUploading] = useState(false);
+export const SettingsManager = () => {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   
-  // New Form Logic
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [linkType, setLinkType] = useState<'category' | 'product'>('category');
-  const [linkTarget, setLinkTarget] = useState('laptop');
+  // Local state for form fields
+  const [formData, setFormData] = useState<Record<string, string>>({});
+
+  // The specific keys we want to manage
+  const KNOWN_KEYS = [
+    'whatsapp_phone', 'support_phone', 'support_email', 
+    'address_display', 'map_link', 'opening_hours',
+    'social_facebook', 'social_instagram', 'social_twitter', 'social_linkedin'
+  ];
 
   useEffect(() => {
-    fetchData();
+    fetchSettings();
   }, []);
 
-  const fetchData = async () => {
-    // Get Slides
-    const { data: slidesData } = await supabase.from('hero_slides').select('*').order('created_at', { ascending: false });
-    if (slidesData) setSlides(slidesData as any);
-
-    // Get Products (for the dropdown selector)
-    const { data: prodData } = await supabase.from('products').select('id, name');
-    if (prodData) setProducts(prodData as any);
+  const fetchSettings = async () => {
+    const { data } = await supabase.from('site_settings').select('*');
+    if (data) {
+      // Convert array to object: { key: value }
+      const initialData: Record<string, string> = {};
+      data.forEach(item => {
+        initialData[item.key] = item.value;
+      });
+      setFormData(initialData);
+    }
+    setLoading(false);
   };
 
-  const handleAddSlide = async () => {
-    if (!imageFile) return alert("Please select an image");
-    
-    setUploading(true);
-    
+  const handleSave = async () => {
+    setSaving(true);
     try {
-        // 1. Upload
-        const fileExt = imageFile.name.split('.').pop();
-        const fileName = `hero-${Date.now()}.${fileExt}`;
-        const { error: upError } = await supabase.storage.from('banners').upload(fileName, imageFile);
-        if (upError) throw upError;
+      // Prepare upsert payload
+      const updates = Object.entries(formData)
+        .filter(([key]) => KNOWN_KEYS.includes(key)) // Only save known keys
+        .map(([key, value]) => ({
+          key,
+          value,
+          updated_at: new Date().toISOString()
+        }));
 
-        const { data: { publicUrl } } = supabase.storage.from('banners').getPublicUrl(fileName);
-
-        // 2. Save
-        const { data, error } = await supabase.from('hero_slides').insert({
-            image_url: publicUrl,
-            link_type: linkType,
-            link_target: linkTarget,
-            is_active: true
-        }).select().single();
-
-        if (error) throw error;
-        if (data) setSlides([data as any, ...slides]);
-        
-        // Reset
-        setImageFile(null);
-    } catch (e) {
-        alert("Error creating banner");
+      const { error } = await supabase.from('site_settings').upsert(updates);
+      if (error) throw error;
+      alert("Site settings updated successfully!");
+    } catch (e: any) {
+      alert("Error: " + e.message);
     } finally {
-        setUploading(false);
+      setSaving(false);
     }
   };
 
-  const deleteSlide = async (id: string) => {
-      setSlides(slides.filter(s => s.id !== id));
-      await supabase.from('hero_slides').delete().eq('id', id);
+  const handleChange = (key: string, val: string) => {
+    setFormData(prev => ({ ...prev, [key]: val }));
   };
 
+  if (loading) return <div className="p-20 text-center"><Loader2 className="animate-spin inline text-slate-400"/></div>;
+
   return (
-    <div className="space-y-8">
+    <div className="max-w-4xl mx-auto space-y-8 pb-20">
       
-      {/* CREATION FORM */}
-      <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col md:flex-row gap-8">
-        
-        {/* Left: Image Uploader */}
-        <div className="w-full md:w-1/2">
-            <div className="border-2 border-dashed border-gray-300 rounded-xl h-64 flex flex-col items-center justify-center relative bg-gray-50 hover:bg-white hover:border-blue-500 transition-all cursor-pointer group">
-                <input type="file" accept="image/*" className="absolute inset-0 opacity-0 z-10 cursor-pointer" onChange={e => setImageFile(e.target.files?.[0] || null)} />
-                {imageFile ? (
-                    <div className="text-center text-green-600">
-                        <CheckCircle size={40} className="mx-auto mb-2" />
-                        <p className="font-bold">{imageFile.name}</p>
-                    </div>
-                ) : (
-                    <div className="text-center text-gray-400 group-hover:text-blue-500">
-                        <ImageIcon size={40} className="mx-auto mb-2" />
-                        <p className="font-medium">Click to Upload Graphic</p>
-                        <p className="text-xs mt-1">Recommended: 1600 x 900px</p>
-                    </div>
-                )}
-            </div>
-        </div>
-
-        {/* Right: Configuration */}
-        <div className="w-full md:w-1/2 space-y-6">
-            <div>
-                <h3 className="text-lg font-bold text-slate-900 mb-4">Banner Destination</h3>
-                <div className="flex gap-2 mb-4">
-                    <button 
-                        onClick={() => setLinkType('category')}
-                        className={`flex-1 py-2 rounded-lg text-sm font-bold border ${linkType === 'category' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-gray-600'}`}
-                    >
-                        Link to Category
-                    </button>
-                    <button 
-                        onClick={() => setLinkType('product')}
-                        className={`flex-1 py-2 rounded-lg text-sm font-bold border ${linkType === 'product' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-gray-600'}`}
-                    >
-                        Link to Product
-                    </button>
-                </div>
-
-                {linkType === 'category' ? (
-                    <select 
-                        className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
-                        onChange={e => setLinkTarget(e.target.value)}
-                    >
-                        {['laptop', 'audio', 'phone', 'gaming', 'monitor'].map(c => (
-                            <option key={c} value={c}>{c.toUpperCase()}</option>
-                        ))}
-                    </select>
-                ) : (
-                    <select 
-                        className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
-                        onChange={e => setLinkTarget(e.target.value)}
-                    >
-                        <option value="">Select a Product...</option>
-                        {products.map(p => (
-                            <option key={p.id} value={p.id}>{p.name}</option>
-                        ))}
-                    </select>
-                )}
-            </div>
-
-            <button 
-                onClick={handleAddSlide}
-                disabled={uploading}
-                className="w-full py-4 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-orange-200"
-            >
-                {uploading ? <Loader2 className="animate-spin" /> : <><Upload size={20} /> Publish Banner</>}
-            </button>
-        </div>
+      {/* HEADER */}
+      <div>
+        <h1 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3">
+           <Globe className="text-orange-500" size={32} /> Site Configuration
+        </h1>
+        <p className="text-slate-500 mt-2 text-lg">
+          Manage your contact numbers, address, and social links without code.
+        </p>
       </div>
 
-      {/* LIST OF ACTIVE BANNERS */}
-      <div className="grid gap-4">
-         {slides.map((slide, index) => (
-             <div key={slide.id} className="flex items-center gap-4 bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
-                 <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center font-bold text-gray-400">
-                     {index + 1}
-                 </div>
-                 <img src={slide.image_url} className="w-32 h-20 object-cover rounded-lg bg-gray-100 border" />
-                 
-                 <div className="flex-1">
-                     <div className="flex items-center gap-2 text-sm font-bold text-slate-700">
-                        <LinkIcon size={14} />
-                        <span className="uppercase">{slide.link_type}:</span>
-                        <span className="text-blue-600">{slide.link_target}</span>
-                     </div>
-                 </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        
+        {/* 1. CONTACT & LOCATION */}
+        <div className="bg-white p-8 rounded-[2rem] border border-gray-200 shadow-sm space-y-8">
+           <h2 className="font-bold text-slate-900 border-b border-gray-100 pb-4 flex items-center gap-2">
+              <MapPin className="text-blue-500" size={20}/> Contact & Location
+           </h2>
 
-                 <button onClick={() => deleteSlide(slide.id)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg">
-                     <Trash2 size={20} />
-                 </button>
-             </div>
-         ))}
+           <div className="space-y-5">
+              <div>
+                 <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">WhatsApp Number (No +)</label>
+                 <div className="relative">
+                    <MessageCircle className="absolute left-3 top-3.5 text-green-500 w-4 h-4" />
+                    <input 
+                      value={formData['whatsapp_phone'] || ''}
+                      onChange={e => handleChange('whatsapp_phone', e.target.value)}
+                      placeholder="e.g. 233245151416"
+                      className="w-full pl-10 p-3 bg-slate-50 border border-gray-200 rounded-xl font-bold text-slate-900 outline-none focus:bg-white focus:border-orange-500 transition"
+                    />
+                 </div>
+                 <p className="text-[10px] text-slate-400 mt-1 pl-1">Used for the "Chat" button. Do not include spaces or symbols.</p>
+              </div>
+
+              <div>
+                 <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Display Phone</label>
+                 <div className="relative">
+                    <Phone className="absolute left-3 top-3.5 text-gray-400 w-4 h-4" />
+                    <input 
+                      value={formData['support_phone'] || ''}
+                      onChange={e => handleChange('support_phone', e.target.value)}
+                      placeholder="+233 24 123 4567"
+                      className="w-full pl-10 p-3 bg-slate-50 border border-gray-200 rounded-xl font-medium text-slate-900 outline-none focus:bg-white focus:border-orange-500 transition"
+                    />
+                 </div>
+              </div>
+
+              <div>
+                 <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Display Address</label>
+                 <textarea 
+                    value={formData['address_display'] || ''}
+                    onChange={e => handleChange('address_display', e.target.value)}
+                    placeholder="Shop 42..."
+                    rows={3}
+                    className="w-full p-3 bg-slate-50 border border-gray-200 rounded-xl font-medium text-slate-900 outline-none focus:bg-white focus:border-orange-500 transition resize-none"
+                 />
+              </div>
+
+              <div>
+                 <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Google Maps Link</label>
+                 <input 
+                    value={formData['map_link'] || ''}
+                    onChange={e => handleChange('map_link', e.target.value)}
+                    placeholder="https://goo.gl/maps/..."
+                    className="w-full p-3 bg-slate-50 border border-gray-200 rounded-xl font-mono text-sm text-blue-600 outline-none focus:bg-white focus:border-orange-500 transition"
+                 />
+              </div>
+           </div>
+        </div>
+
+        {/* 2. SOCIAL MEDIA */}
+        <div className="bg-white p-8 rounded-[2rem] border border-gray-200 shadow-sm space-y-8 h-fit">
+           <h2 className="font-bold text-slate-900 border-b border-gray-100 pb-4 flex items-center gap-2">
+              <Globe className="text-purple-500" size={20}/> Social Profiles
+           </h2>
+           
+           <div className="space-y-5">
+              {[
+                { key: 'social_facebook', label: 'Facebook URL', icon: Facebook, color: 'text-blue-600' },
+                { key: 'social_instagram', label: 'Instagram URL', icon: Instagram, color: 'text-pink-600' },
+                { key: 'social_twitter', label: 'X (Twitter) URL', icon: Twitter, color: 'text-slate-900' },
+                { key: 'social_linkedin', label: 'LinkedIn URL', icon: Linkedin, color: 'text-blue-700' },
+              ].map((social) => (
+                <div key={social.key}>
+                   <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">{social.label}</label>
+                   <div className="relative">
+                      <social.icon className={`absolute left-3 top-3.5 w-4 h-4 ${social.color}`} />
+                      <input 
+                        value={formData[social.key] || ''}
+                        onChange={e => handleChange(social.key, e.target.value)}
+                        placeholder="https://..."
+                        className="w-full pl-10 p-3 bg-slate-50 border border-gray-200 rounded-xl font-medium text-slate-900 outline-none focus:bg-white focus:border-orange-500 transition"
+                      />
+                   </div>
+                </div>
+              ))}
+           </div>
+        </div>
+
+      </div>
+
+      {/* SAVE BAR */}
+      <div className="sticky bottom-4 bg-slate-900 text-white p-4 rounded-2xl shadow-2xl shadow-slate-900/20 flex justify-between items-center animate-in slide-in-from-bottom-4">
+         <div className="pl-2">
+            <p className="font-bold text-sm">Unsaved changes?</p>
+            <p className="text-xs text-slate-400">Click save to publish updates immediately.</p>
+         </div>
+         <button 
+           onClick={handleSave}
+           disabled={saving}
+           className="bg-orange-500 hover:bg-orange-600 text-white px-8 py-3 rounded-xl font-bold transition-colors flex items-center gap-2 disabled:opacity-50"
+         >
+           {saving ? <Loader2 className="animate-spin" /> : <><Save size={18} /> Save Settings</>}
+         </button>
       </div>
 
     </div>

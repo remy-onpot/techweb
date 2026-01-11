@@ -3,18 +3,35 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Banner, BANNER_RULES, BannerSlot } from '@/lib/types';
-import { Trash2, AlertCircle, CheckCircle, Loader2, Link as LinkIcon, ImagePlus, LayoutTemplate, MonitorPlay } from 'lucide-react';
+import { Trash2, AlertCircle, CheckCircle, Loader2, Link as LinkIcon, ImagePlus, Type, Palette, LayoutDashboard, Store } from 'lucide-react';
 import Image from 'next/image';
+
+// Grouping slots for easier UI navigation
+const SLOT_GROUPS = {
+  'Homepage Hero': ['main_hero', 'side_top', 'side_bottom'],
+  'Discovery Tiles': ['tile_new', 'tile_student', 'flash'],
+  'Store Info': ['branch_slider', 'brand_hero']
+};
 
 export const MarketingManager = () => {
   const [banners, setBanners] = useState<Banner[]>([]);
-  const [selectedSlot, setSelectedSlot] = useState<BannerSlot>('brand_hero'); // Default to the top slot
+  const [selectedSlot, setSelectedSlot] = useState<BannerSlot>('main_hero');
+  
+  // FORM STATE
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string>('');
-  const [targetLink, setTargetLink] = useState('');
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
-  const [dimensions, setDimensions] = useState<{w:number, h:number} | null>(null);
+  
+  // RICH CONTENT STATE
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    label: '',
+    cta_text: 'Shop Now',
+    link_url: '',
+    bg_color: '#0A2540' // Default Navy
+  });
 
   const rule = BANNER_RULES[selectedSlot];
 
@@ -27,51 +44,24 @@ export const MarketingManager = () => {
     if (data) setBanners(data as any);
   };
 
-  // 🛡️ THE FLEXIBLE ENFORCER (Updated)
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Reset
     setError('');
-    setImageFile(null);
-    setPreviewUrl('');
-    setDimensions(null);
-
-    const img = new window.Image();
     const objectUrl = URL.createObjectURL(file);
-    
-    img.onload = () => {
-      setDimensions({ w: img.width, h: img.height });
-      
-      // 1. Check Minimum Resolution (Allowing -10% wiggle room to be nice)
-      const minW = rule.width * 0.9;
-      const minH = rule.height * 0.9;
-
-      if (img.width < minW || img.height < minH) {
-        setError(`❌ Low Quality Image.\nMinimum required: ${rule.width}x${rule.height}px.\nYour image: ${img.width}x${img.height}px.`);
-        return;
-      }
-
-      // 2. Check Aspect Ratio (With 20% Flexibility)
-      const fileRatio = img.width / img.height;
-      const targetRatio = rule.width / rule.height;
-      const tolerance = 0.2; 
-
-      if (Math.abs(fileRatio - targetRatio) > tolerance) {
-         setError(`❌ Shape Mismatch.\nThis slot needs a ${rule.aspectRatio} shape.\nYour image is too ${fileRatio > targetRatio ? 'wide' : 'tall'}.`);
-         return;
-      }
-
-      // Pass
-      setImageFile(file);
-      setPreviewUrl(objectUrl);
-    };
-    img.src = objectUrl;
+    setImageFile(file);
+    setPreviewUrl(objectUrl);
   };
 
   const handleUpload = async () => {
-    if (!imageFile || !targetLink) return setError("Image and Link are required");
+    if (!imageFile || !formData.link_url) return setError("Image and Link are required");
+    
+    // Validation for Text Slots
+    if (['main_hero', 'side_top', 'side_bottom'].includes(selectedSlot)) {
+       if (!formData.title) return setError("This slot requires a Title to display correctly.");
+    }
+
     setUploading(true);
 
     try {
@@ -84,19 +74,24 @@ export const MarketingManager = () => {
       const { data, error } = await supabase.from('banners').insert({
         slot: selectedSlot,
         image_url: publicUrl,
-        link: targetLink,
-        is_active: true
+        is_active: true,
+        // Spread the rich text data
+        title: formData.title,
+        description: formData.description,
+        label: formData.label,
+        bg_color: formData.bg_color,
+        cta_text: formData.cta_text,
+        link_url: formData.link_url
       }).select().single();
 
       if (error) throw error;
       
       setBanners([data as any, ...banners]);
       
-      // Clean up
+      // Reset Form
       setImageFile(null);
       setPreviewUrl('');
-      setTargetLink('');
-      setDimensions(null);
+      setFormData({ title: '', description: '', label: '', cta_text: 'Shop Now', link_url: '', bg_color: '#0A2540' });
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -105,43 +100,55 @@ export const MarketingManager = () => {
   };
 
   const deleteBanner = async (id: string) => {
-    if(!confirm("Remove this banner?")) return;
+    if(!confirm("Remove this asset? It will disappear from the homepage immediately.")) return;
     setBanners(banners.filter(b => b.id !== id));
     await supabase.from('banners').delete().eq('id', id);
   };
 
-  // Helper to render asset list
+  // Helper to render asset cards
   const renderAssetList = (title: string, filterFn: (b: Banner) => boolean) => {
     const assets = banners.filter(filterFn);
     if (assets.length === 0) return null;
 
     return (
-      <div className="mb-8">
-        <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
-           {title === 'Page Headers' ? <LayoutTemplate size={20}/> : <MonitorPlay size={20}/>}
-           {title}
+      <div className="mb-10">
+        <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2 border-b border-gray-100 pb-2">
+           {title} <span className="text-xs bg-gray-100 px-2 py-1 rounded-full text-slate-500">{assets.length}</span>
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {assets.map((b) => (
-            <div key={b.id} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex gap-5 group hover:border-orange-200 transition-colors">
-              <div className="w-32 h-24 bg-gray-100 rounded-xl relative overflow-hidden flex-shrink-0 border border-gray-200">
-                <Image src={b.image_url} fill className="object-cover" alt="Banner" />
+            <div key={b.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden group hover:border-orange-200 transition-all">
+              {/* Image Preview Area */}
+              <div 
+                className="h-40 relative flex items-center justify-center p-4"
+                style={{ backgroundColor: b.bg_color || '#f3f4f6' }}
+              >
+                 <div className="relative w-full h-full">
+                    <Image src={b.image_url} fill className="object-contain" alt="Banner" />
+                 </div>
+                 {/* Slot Badge */}
+                 <div className="absolute top-2 left-2 bg-black/70 backdrop-blur text-white text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-wider">
+                    {BANNER_RULES[b.slot]?.label}
+                 </div>
               </div>
-              <div className="flex-1 min-w-0 py-1 flex flex-col justify-between">
-                <div>
-                  <div className="flex justify-between items-start">
-                    <span className="text-[10px] font-bold uppercase bg-slate-100 px-2 py-1 rounded-md text-slate-600 tracking-wide">
-                      {BANNER_RULES[b.slot]?.label || b.slot}
-                    </span>
-                    <button onClick={() => deleteBanner(b.id)} className="text-gray-300 hover:text-red-500 transition-colors">
-                      <Trash2 size={18} />
+
+              {/* Data Area */}
+              <div className="p-4 space-y-3">
+                 <div>
+                    <h4 className="font-bold text-slate-900 text-sm truncate">{b.title || 'No Title Overlay'}</h4>
+                    <p className="text-xs text-slate-500 truncate">{b.description || 'No description'}</p>
+                 </div>
+                 
+                 <div className="flex items-center gap-2 text-xs font-mono text-blue-600 bg-blue-50 p-2 rounded-lg truncate">
+                    <LinkIcon size={12} /> {b.link_url}
+                 </div>
+
+                 <div className="pt-2 flex justify-between items-center border-t border-gray-50">
+                    <span className="text-[10px] text-gray-400 font-mono">ID: {b.id.slice(0,6)}</span>
+                    <button onClick={() => deleteBanner(b.id)} className="text-red-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition-colors">
+                      <Trash2 size={16} />
                     </button>
-                  </div>
-                  <div className="mt-3 flex items-center gap-2 text-sm text-blue-600 font-bold truncate">
-                    <LinkIcon size={14} /> {b.link}
-                  </div>
-                </div>
-                <p className="text-[10px] text-gray-400 font-mono">ID: {b.id.slice(0,8)}</p>
+                 </div>
               </div>
             </div>
           ))}
@@ -153,133 +160,180 @@ export const MarketingManager = () => {
   return (
     <div className="space-y-12">
       
-      {/* 1. UPLOAD SECTION */}
-      <div className="bg-white p-8 rounded-3xl border border-gray-200 shadow-sm flex flex-col lg:flex-row gap-10">
+      {/* 1. EDITOR SECTION */}
+      <div className="bg-white p-6 lg:p-8 rounded-[2rem] border border-gray-200 shadow-sm flex flex-col lg:flex-row gap-10">
         
-        {/* Left: Controls */}
+        {/* Left: Configuration Form */}
         <div className="flex-1 space-y-8">
+          
+          {/* A. SLOT SELECTION */}
           <div>
-            <div className="flex items-center gap-2 mb-4">
-               <div className="bg-slate-900 text-white w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs">1</div>
-               <h2 className="text-lg font-bold text-slate-900">Select Banner Slot</h2>
+            <h2 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4">1. Select Position</h2>
+            <div className="flex flex-wrap gap-2">
+               {Object.entries(SLOT_GROUPS).map(([groupName, slots]) => (
+                 <div key={groupName} className="w-full mb-2">
+                    <span className="text-xs font-bold text-slate-500 mb-2 block">{groupName}</span>
+                    <div className="flex flex-wrap gap-2">
+                      {slots.map(slotKey => (
+                        <button
+                          key={slotKey}
+                          onClick={() => { setSelectedSlot(slotKey as BannerSlot); setPreviewUrl(''); setError(''); }}
+                          className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all ${
+                            selectedSlot === slotKey 
+                            ? 'bg-slate-900 text-white border-slate-900 shadow-lg scale-105' 
+                            : 'bg-white text-slate-600 border-gray-200 hover:bg-gray-50'
+                          }`}
+                        >
+                          {BANNER_RULES[slotKey as BannerSlot].label.split(':')[1] || BANNER_RULES[slotKey as BannerSlot].label}
+                        </button>
+                      ))}
+                    </div>
+                 </div>
+               ))}
             </div>
             
-            {/* Updated Grid to 3 Columns for better fit */}
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {Object.keys(BANNER_RULES).map((key) => (
-                <button
-                  key={key}
-                  onClick={() => { setSelectedSlot(key as BannerSlot); setImageFile(null); setPreviewUrl(''); setError(''); }}
-                  className={`p-3 rounded-2xl border text-left transition-all ${
-                    selectedSlot === key 
-                    ? 'bg-slate-900 text-white border-slate-900 ring-4 ring-slate-100' 
-                    : 'bg-white text-slate-600 hover:bg-gray-50'
-                  }`}
-                >
-                  <div className="font-bold text-xs md:text-sm leading-tight mb-1">{BANNER_RULES[key as BannerSlot].label}</div>
-                  <div className={`text-[10px] ${selectedSlot === key ? 'text-slate-400' : 'text-slate-400'}`}>
-                    {BANNER_RULES[key as BannerSlot].width}x{BANNER_RULES[key as BannerSlot].height}
-                  </div>
-                </button>
-              ))}
+            <div className="mt-4 p-3 bg-blue-50 text-blue-800 text-xs rounded-xl flex items-start gap-2 border border-blue-100">
+               <AlertCircle size={16} className="mt-0.5 shrink-0"/>
+               <div>
+                  <strong>Requirement:</strong> {rule.description} <br/>
+                  Size: <strong>{rule.width} x {rule.height}px</strong> {rule.aspectRatio && `(${rule.aspectRatio})`}
+               </div>
             </div>
           </div>
 
+          {/* B. CONTENT FIELDS (Conditional based on slot) */}
           <div>
-             <div className="flex items-center gap-2 mb-4">
-               <div className="bg-slate-900 text-white w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs">2</div>
-               <h2 className="text-lg font-bold text-slate-900">Link Destination</h2>
-            </div>
-            <div className="relative">
-                <LinkIcon className="absolute left-4 top-3.5 text-gray-400 w-4 h-4" />
-                <input 
-                placeholder="e.g. /category/gaming or /product/123" 
-                className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl font-medium focus:ring-2 ring-orange-500 outline-none transition bg-gray-50 focus:bg-white"
-                value={targetLink}
-                onChange={e => setTargetLink(e.target.value)}
-                />
-            </div>
+             <h2 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4">2. Customize Content</h2>
+             <div className="space-y-4">
+                
+                {/* Title & Desc (Only for Main Heroes) */}
+                {['main_hero', 'side_top', 'side_bottom'].includes(selectedSlot) && (
+                   <div className="p-5 bg-gray-50 rounded-2xl border border-gray-100 space-y-4 animate-in slide-in-from-left-2">
+                      <div>
+                         <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Overlay Title</label>
+                         <input 
+                           value={formData.title} 
+                           onChange={e => setFormData({...formData, title: e.target.value})}
+                           placeholder="e.g. HP EliteBook G8" 
+                           className="w-full p-3 rounded-xl border border-gray-200 font-bold focus:ring-2 ring-orange-100 outline-none"
+                         />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                         <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Label / Tag</label>
+                            <input 
+                              value={formData.label} 
+                              onChange={e => setFormData({...formData, label: e.target.value})}
+                              placeholder="e.g. New Arrival" 
+                              className="w-full p-3 rounded-xl border border-gray-200 text-sm focus:ring-2 ring-orange-100 outline-none"
+                            />
+                         </div>
+                         <div>
+                             <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Description / Price</label>
+                             <input 
+                               value={formData.description} 
+                               onChange={e => setFormData({...formData, description: e.target.value})}
+                               placeholder="e.g. Business Class" 
+                               className="w-full p-3 rounded-xl border border-gray-200 text-sm focus:ring-2 ring-orange-100 outline-none"
+                             />
+                         </div>
+                      </div>
+                      
+                      {/* Background Color Picker */}
+                      <div>
+                         <label className="text-xs font-bold text-slate-500 uppercase mb-2 block flex items-center gap-2">
+                            <Palette size={14}/> Card Background Color
+                         </label>
+                         <div className="flex gap-3 items-center">
+                            <input 
+                              type="color" 
+                              value={formData.bg_color} 
+                              onChange={e => setFormData({...formData, bg_color: e.target.value})}
+                              className="w-10 h-10 rounded-lg cursor-pointer border-0 p-0"
+                            />
+                            <span className="text-xs font-mono text-gray-500 bg-white px-2 py-1 rounded border">{formData.bg_color}</span>
+                         </div>
+                      </div>
+                   </div>
+                )}
+
+                {/* Link (Always Required) */}
+                <div>
+                   <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Destination Link</label>
+                   <div className="relative">
+                      <LinkIcon className="absolute left-3 top-3.5 text-gray-400 w-4 h-4" />
+                      <input 
+                        value={formData.link_url} 
+                        onChange={e => setFormData({...formData, link_url: e.target.value})}
+                        placeholder="/category/laptop" 
+                        className="w-full pl-9 p-3 rounded-xl border border-gray-200 font-medium focus:ring-2 ring-orange-100 outline-none"
+                      />
+                   </div>
+                </div>
+             </div>
           </div>
 
-          <div className="p-4 bg-orange-50 rounded-xl text-orange-900 text-sm border border-orange-100">
-            <strong>Designer Brief:</strong> {rule.description} <br/>
-            Target Size: <strong>{rule.width} x {rule.height}px</strong> (Flexible)
-          </div>
         </div>
 
-        {/* Right: Dropzone */}
-        <div className="flex-1">
-           <div className={`h-full min-h-[350px] border-2 border-dashed rounded-3xl flex flex-col items-center justify-center relative transition-all overflow-hidden ${error ? 'border-red-300 bg-red-50' : 'border-gray-300 bg-gray-50 hover:bg-white hover:border-orange-400'}`}>
+        {/* Right: Upload & Preview */}
+        <div className="flex-1 flex flex-col gap-6">
+           <h2 className="text-sm font-black text-slate-400 uppercase tracking-widest">3. Upload Graphic</h2>
+           
+           <div 
+             className="flex-1 min-h-[400px] border-2 border-dashed border-gray-200 rounded-3xl bg-gray-50 relative flex flex-col items-center justify-center overflow-hidden hover:bg-white hover:border-orange-300 transition-all group"
+             style={{ backgroundColor: ['main_hero', 'side_top'].includes(selectedSlot) ? formData.bg_color : undefined }}
+           >
               <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer z-20" onChange={handleFileSelect} />
               
               {previewUrl ? (
-                <div className="relative w-full h-full bg-slate-100 group">
-                   <img src={previewUrl} className="w-full h-full object-contain" />
-                   
-                   {/* Info Overlay */}
-                   <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                      <p className="text-white font-bold">Click to Change</p>
-                   </div>
+                 <div className="relative w-full h-full p-8 flex items-center justify-center">
+                    <img src={previewUrl} className="max-w-full max-h-full object-contain drop-shadow-xl" />
+                    
+                    {/* Live Text Preview Overlay */}
+                    {['main_hero'].includes(selectedSlot) && (
+                       <div className="absolute top-8 left-8 z-10 pointer-events-none">
+                          <span className="bg-white/20 backdrop-blur text-white text-xs px-2 py-1 rounded mb-2 inline-block">{formData.label || 'Label'}</span>
+                          <h3 className="text-3xl font-black text-white">{formData.title || 'Your Title Here'}</h3>
+                       </div>
+                    )}
 
-                   {/* Dimensions Badge */}
-                   <div className="absolute bottom-4 left-4 bg-slate-900/80 backdrop-blur text-white px-3 py-1.5 rounded-lg text-xs font-mono shadow-lg">
-                      {dimensions?.w} x {dimensions?.h}px
-                   </div>
-                   
-                   {/* Success Badge */}
-                   <div className="absolute bottom-4 right-4 bg-green-500 text-white px-4 py-2 rounded-full text-sm font-bold flex items-center gap-2 shadow-lg">
-                     <CheckCircle size={16} /> Ready
-                   </div>
-                </div>
+                    <div className="absolute bottom-4 right-4 bg-green-500 text-white px-4 py-2 rounded-full text-sm font-bold shadow-lg flex items-center gap-2">
+                      <CheckCircle size={16} /> Ready to Upload
+                    </div>
+                 </div>
               ) : (
-                <div className="text-center p-8 z-10">
-                   <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm text-gray-400">
-                     <ImagePlus size={36} />
-                   </div>
-                   <h3 className="font-bold text-xl text-slate-700">Drop Graphic Here</h3>
-                   <p className="text-slate-400 mt-2 text-sm max-w-xs mx-auto">
-                     Accepts any size. We check quality & shape automatically.
-                   </p>
-                </div>
-              )}
-
-              {error && (
-                <div className="absolute inset-0 bg-white/95 flex flex-col items-center justify-center text-center p-8 z-30 animate-in fade-in">
-                   <AlertCircle className="text-red-500 w-16 h-16 mb-4" />
-                   <h3 className="text-xl font-bold text-red-600 mb-2">Image Issue</h3>
-                   <p className="text-slate-600 font-medium whitespace-pre-line leading-relaxed">{error}</p>
-                   <button className="mt-6 px-6 py-2 bg-slate-100 hover:bg-slate-200 rounded-full text-sm font-bold text-slate-600">
-                     Try a different image
-                   </button>
-                </div>
+                 <div className="text-center p-8">
+                    <div className="w-16 h-16 bg-white rounded-full shadow-sm flex items-center justify-center mx-auto mb-4 text-gray-400">
+                       <ImagePlus size={32} />
+                    </div>
+                    <p className="font-bold text-slate-600">Click to Select Image</p>
+                    {['main_hero'].includes(selectedSlot) && <p className="text-xs text-orange-600 mt-2 font-bold">Tip: Use a transparent PNG for this slot!</p>}
+                 </div>
               )}
            </div>
+
+           {error && (
+              <div className="bg-red-50 text-red-600 p-4 rounded-xl text-sm font-bold flex items-center gap-2 animate-in slide-in-from-bottom-2">
+                 <AlertCircle size={18} /> {error}
+              </div>
+           )}
+
+           <button 
+             onClick={handleUpload} 
+             disabled={!imageFile || uploading}
+             className="w-full py-4 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-slate-900/10 flex items-center justify-center gap-2"
+           >
+             {uploading ? <Loader2 className="animate-spin" /> : 'Publish Asset'}
+           </button>
         </div>
       </div>
 
-      <button 
-        onClick={handleUpload} 
-        disabled={!imageFile || uploading}
-        className="w-full py-5 bg-slate-900 text-white text-lg font-bold rounded-2xl flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-800 transition-all shadow-xl shadow-slate-900/10 active:scale-[0.99]"
-      >
-        {uploading ? <Loader2 className="animate-spin" /> : 'Publish Asset to Storefront'}
-      </button>
-
-      {/* 2. LIVE ASSETS (Grouped) */}
-      <div>
-         <h2 className="text-2xl font-black text-slate-900 mb-8 tracking-tight">Active Campaigns</h2>
-         
-         {/* Group 1: The Big Header */}
-         {renderAssetList('Page Headers', (b) => b.slot === 'brand_hero')}
-         
-         {/* Group 2: The Grid Content */}
-         {renderAssetList('Grid Content', (b) => b.slot !== 'brand_hero')}
-         
-         {banners.length === 0 && (
-            <div className="text-center py-20 bg-gray-50 rounded-3xl border border-dashed border-gray-200 text-gray-400">
-               No active assets found. Upload one above!
-            </div>
-         )}
+      {/* 2. LIVE ASSETS */}
+      <div className="space-y-2">
+         <h2 className="text-2xl font-black text-slate-900 tracking-tight">Active Assets</h2>
+         {renderAssetList('Homepage Hero Section', (b) => ['main_hero', 'side_top', 'side_bottom'].includes(b.slot))}
+         {renderAssetList('Product Discovery Tiles', (b) => ['tile_new', 'tile_student', 'flash'].includes(b.slot))}
+         {renderAssetList('Store & Brand Info', (b) => ['branch_slider', 'brand_hero'].includes(b.slot))}
       </div>
 
     </div>

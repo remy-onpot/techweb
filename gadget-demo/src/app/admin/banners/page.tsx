@@ -2,23 +2,20 @@
 
 import React from 'react';
 import { MarketingManager } from '@/components/admin/MarketingManager';
-import { Sparkles, LayoutTemplate } from 'lucide-react';
+import { Megaphone, LayoutTemplate } from 'lucide-react';
 
 export default function MarketingPage() {
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="max-w-6xl mx-auto space-y-8">
       {/* Header Section */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Marketing Assets</h1>
-          <p className="text-slate-500 mt-2">
-            Manage your Hero Slider, Flash Sale banners, and Category Tiles.
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3">
+             <Megaphone className="text-orange-500" size={32} /> Marketing Assets
+          </h1>
+          <p className="text-slate-500 mt-2 text-lg">
+            Manage your Homepage Hero, Side Banners, and Branch Photos.
           </p>
-        </div>
-        
-        {/* Decorative Icon */}
-        <div className="bg-gradient-to-br from-orange-100 to-amber-50 p-3 rounded-2xl border border-orange-100">
-           <LayoutTemplate className="text-orange-600 w-8 h-8" />
         </div>
       </div>
 
