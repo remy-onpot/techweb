@@ -38,25 +38,30 @@ export default function ProfilePage() {
     }
     setUser(user);
 
-    // 2. Get Public Profile
-    const { data: profile } = await supabase
+    // 2. Get Public Profile (SAFER WAY)
+    const { data: profile, error } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', user.id)
-      .single();
+      .maybeSingle();
+
+    console.log(profile?.email);
 
     if (profile) {
       setProfile(profile);
       setFullName(profile.full_name || '');
       setPhone(profile.phone || '');
       setAddress(profile.shipping_address || '');
+    } else {
+        // Optional: If no profile exists, maybe create one on the fly?
+        // For now, just leaving fields empty is fine.
     }
 
-    // 3. Get Orders (Assuming you have an orders table)
-    const { data: orders } = await supabase
+    // 3. Get Orders
+    const { data: orders, error: orderError } = await supabase
       .from('orders')
       .select('*')
-      .eq('user_id', user.id) // Ensure your orders table has user_id
+      .eq('user_id', user.id) // <--- This will work now that we ran the SQL
       .order('created_at', { ascending: false });
 
     if (orders) setOrders(orders);
@@ -218,7 +223,7 @@ export default function ProfilePage() {
                     className="w-full pl-10 p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-900 focus:outline-none focus:border-orange-500" 
                   />
                 </div>
-                <p className="text-xs text-slate-400 mt-2">Must be at least 6 characters long.</p>
+                <p className="text-xs text-slate-400 mt-2">Must contain lowercase, uppercase, digits,symbols and be at least 8 characters long.</p>
               </div>
 
               <div className="pt-4">
