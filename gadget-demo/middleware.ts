@@ -1,9 +1,9 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
-import { isRateLimited } from '@/lib/rate-limit'; // Keep your rate limiter!
+import { isRateLimited } from '@/lib/rate-limit'; 
 
 export async function middleware(request: NextRequest) {
-  // 1. RATE LIMITING (First line of defense)
+  // 1. RATE LIMITING
   if (request.nextUrl.pathname.startsWith('/api') || request.nextUrl.pathname.startsWith('/admin')) {
     if (isRateLimited(request)) {
       return new NextResponse(
@@ -13,14 +13,15 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // 2. SETUP RESPONSE (Required for Cookie handling)
+  // 2. SETUP RESPONSE
+  // We create the response upfront to attach cookies to it later
   let response = NextResponse.next({
     request: {
       headers: request.headers,
     },
   });
 
-  // 3. INIT SUPABASE CLIENT (The Modern Way)
+  // 3. INIT SUPABASE CLIENT
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -30,25 +31,36 @@ export async function middleware(request: NextRequest) {
           return request.cookies.get(name)?.value;
         },
         set(name: string, value: string, options: CookieOptions) {
-          request.cookies.set({ name, value, ...options });
-          response = NextResponse.next({
-            request: { headers: request.headers },
+          // Update the request cookies so the immediate getUser() call sees the new token
+          request.cookies.set({
+            name,
+            value,
+            ...options,
           });
-          response.cookies.set({ name, value, ...options });
+          // Update the response cookies so the browser saves them
+          response.cookies.set({
+            name,
+            value,
+            ...options,
+          });
         },
         remove(name: string, options: CookieOptions) {
-          request.cookies.set({ name, value: '', ...options });
-          response = NextResponse.next({
-            request: { headers: request.headers },
+          request.cookies.set({
+            name,
+            value: '',
+            ...options,
           });
-          response.cookies.set({ name, value: '', ...options });
+          response.cookies.set({
+            name,
+            value: '',
+            ...options,
+          });
         },
       },
     }
   );
 
   // 4. CHECK USER SESSION
-  // getUser() is safer than getSession() in middleware
   const { data: { user } } = await supabase.auth.getUser();
 
   // 5. PROTECTED ROUTES: Admin Panel
@@ -60,7 +72,7 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // 6. AUTH ROUTES: Kick logged-in users out of /login
+  // 6. AUTH ROUTES: Redirect logged-in users away from login
   if (request.nextUrl.pathname.startsWith('/login')) {
     if (user) {
       const redirectUrl = request.nextUrl.clone();

@@ -1,8 +1,7 @@
-import { createClient } from '@supabase/supabase-js';
+// @/lib/supabase.ts
+import { createBrowserClient } from '@supabase/ssr';
 
-// These automatically pull from your .env.local file
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-// Create a single supabase client for interacting with your database
-export const supabase = createClient(supabaseUrl, supabaseKey);
+export const supabase = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
