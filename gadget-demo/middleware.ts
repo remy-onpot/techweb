@@ -13,15 +13,12 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // 2. SETUP RESPONSE
-  // We create the response upfront to attach cookies to it later
   let response = NextResponse.next({
     request: {
       headers: request.headers,
     },
   });
 
-  // 3. INIT SUPABASE CLIENT
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -31,30 +28,12 @@ export async function middleware(request: NextRequest) {
           return request.cookies.get(name)?.value;
         },
         set(name: string, value: string, options: CookieOptions) {
-          // Update the request cookies so the immediate getUser() call sees the new token
-          request.cookies.set({
-            name,
-            value,
-            ...options,
-          });
-          // Update the response cookies so the browser saves them
-          response.cookies.set({
-            name,
-            value,
-            ...options,
-          });
+          request.cookies.set({ name, value, ...options });
+          response.cookies.set({ name, value, ...options });
         },
         remove(name: string, options: CookieOptions) {
-          request.cookies.set({
-            name,
-            value: '',
-            ...options,
-          });
-          response.cookies.set({
-            name,
-            value: '',
-            ...options,
-          });
+          request.cookies.set({ name, value: '', ...options });
+          response.cookies.set({ name, value: '', ...options });
         },
       },
     }
@@ -65,16 +44,26 @@ export async function middleware(request: NextRequest) {
 
   // 5. PROTECTED ROUTES: Admin Panel
   if (request.nextUrl.pathname.startsWith('/admin')) {
+    // A. User must be logged in
     if (!user) {
       const redirectUrl = request.nextUrl.clone();
       redirectUrl.pathname = '/login';
       return NextResponse.redirect(redirectUrl);
     }
+
+    // B. User must have 'admin' role (The New Security Layer)
+    // We check app_metadata because users cannot spoof this.
+    if (user.app_metadata?.role !== 'admin') {
+      const redirectUrl = request.nextUrl.clone();
+      redirectUrl.pathname = '/'; // Kick them to homepage
+      return NextResponse.redirect(redirectUrl);
+    }
   }
 
-  // 6. AUTH ROUTES: Redirect logged-in users away from login
+  // 6. AUTH ROUTES: Redirect logged-in ADMINS away from login
+  // Regular users can still access login page if they want (or you can redirect them to profile)
   if (request.nextUrl.pathname.startsWith('/login')) {
-    if (user) {
+    if (user && user.app_metadata?.role === 'admin') {
       const redirectUrl = request.nextUrl.clone();
       redirectUrl.pathname = '/admin/inventory';
       return NextResponse.redirect(redirectUrl);
