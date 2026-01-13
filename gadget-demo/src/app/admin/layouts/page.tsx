@@ -1,35 +1,47 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Save, Loader2, Layers, RefreshCw, ImagePlus, Upload, Eye, EyeOff, Trash2 } from 'lucide-react';
+import { Save, Loader2, Layers, RefreshCw, ImagePlus, Upload, Trash2, AlertCircle } from 'lucide-react';
 
 interface CategoryMeta {
   slug: string;
   title: string;
   subtitle: string;
   image_url: string;
-  show_overlay: boolean; // New field to control text visibility
+  show_overlay: boolean;
 }
 
 export default function LayoutsPage() {
   const [categories, setCategories] = useState<CategoryMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState<string | null>(null); // Track which slug is uploading
+  const [uploading, setUploading] = useState<string | null>(null);
+  
+  // UX: Track unsaved changes
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   useEffect(() => {
     fetchData();
   }, []);
 
+  // Warn user if they try to leave with unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
   const fetchData = async () => {
     setLoading(true);
-    
-    // 1. Get existing saved layouts
     const { data: meta } = await supabase.from('category_metadata').select('*');
     const metaMap = new Map(meta?.map(m => [m.slug, m]) || []);
 
-    // 2. Get ALL currently active categories
     const { data: products } = await supabase
       .from('products')
       .select('category')
@@ -39,7 +51,6 @@ export default function LayoutsPage() {
       products?.map(p => (p.category || 'uncategorized').toLowerCase()) || []
     ));
 
-    // 3. Merge them
     const mergedList: CategoryMeta[] = activeSlugs.map(slug => {
       const existing = metaMap.get(slug);
       return existing || { 
@@ -47,19 +58,20 @@ export default function LayoutsPage() {
         title: slug.charAt(0).toUpperCase() + slug.slice(1) + 's',
         subtitle: 'Shop Collection', 
         image_url: '',
-        show_overlay: true // Default to showing text overlay
+        show_overlay: true 
       };
     });
 
     setCategories(mergedList);
     setLoading(false);
+    setHasUnsavedChanges(false); // Reset dirty state on load
   };
 
   const handleUpdate = (slug: string, field: keyof CategoryMeta, value: any) => {
     setCategories(prev => prev.map(c => c.slug === slug ? { ...c, [field]: value } : c));
+    setHasUnsavedChanges(true); // <--- UX: Mark as dirty immediately
   };
 
-  // --- NEW: Handle Image Upload ---
   const handleImageUpload = async (slug: string, file: File) => {
     if (!file) return;
     setUploading(slug);
@@ -69,19 +81,17 @@ export default function LayoutsPage() {
       const fileName = `${slug}-${Date.now()}.${fileExt}`;
       const filePath = `categories/${fileName}`;
 
-      // 1. Upload to Supabase 'media' bucket
       const { error: uploadError } = await supabase.storage
-        .from('media') // Ensure this bucket exists!
+        .from('media')
         .upload(filePath, file);
 
       if (uploadError) throw uploadError;
 
-      // 2. Get Public URL
       const { data: { publicUrl } } = supabase.storage
         .from('media')
         .getPublicUrl(filePath);
 
-      // 3. Update State
+      // ONLY update local state. Do not save to DB yet.
       handleUpdate(slug, 'image_url', publicUrl);
 
     } catch (error: any) {
@@ -96,7 +106,10 @@ export default function LayoutsPage() {
     try {
       const { error } = await supabase.from('category_metadata').upsert(categories);
       if (error) throw error;
-      alert("✅ Homepage layouts updated successfully!");
+      
+      // UX: Success feedback
+      setHasUnsavedChanges(false);
+      // Optional: Show a toast here instead of alert
     } catch (err: any) {
       alert("❌ Error: " + err.message);
     } finally {
@@ -107,35 +120,48 @@ export default function LayoutsPage() {
   if (loading) return <div className="p-20 text-center flex flex-col items-center gap-4"><Loader2 className="animate-spin text-orange-500" size={32}/><p className="text-slate-400 font-medium">Loading your categories...</p></div>;
 
   return (
-    <div className="max-w-5xl mx-auto pb-20">
+    <div className="max-w-5xl mx-auto pb-32">
       
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-10">
-        <div>
-          <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3 tracking-tight">
-            <Layers className="text-orange-500 fill-orange-100" size={32} /> 
-            Storefront Layouts
-          </h1>
-          <p className="text-slate-500 mt-2 font-medium">
-            Manage the "Identity Cards" displayed on your homepage rails.
-          </p>
-        </div>
-        
-        <div className="flex items-center gap-3">
-            <button 
-              onClick={fetchData}
-              className="p-3 rounded-xl border border-gray-200 text-slate-500 hover:bg-white hover:text-slate-900 transition"
-              title="Refresh Categories"
-            >
-              <RefreshCw size={20} />
-            </button>
-            <button 
-              onClick={saveAll}
-              disabled={saving}
-              className="bg-slate-900 text-white px-8 py-3 rounded-xl font-bold hover:bg-slate-800 transition shadow-lg shadow-slate-900/20 flex items-center gap-2 disabled:opacity-50"
-            >
-              {saving ? <Loader2 className="animate-spin" /> : <><Save size={18} /> Save Changes</>}
-            </button>
+      {/* STICKY HEADER: Always visible so you can't miss the Save button */}
+      <div className="sticky top-0 z-50 bg-slate-50/95 backdrop-blur-sm py-6 border-b border-gray-200 mb-10 -mx-4 px-4 md:mx-0 md:px-0 transition-all">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3 tracking-tight">
+              <Layers className="text-orange-500 fill-orange-100" size={32} /> 
+              Storefront Layouts
+            </h1>
+          </div>
+          
+          <div className="flex items-center gap-3">
+              {/* Unsaved Changes Indicator */}
+              {hasUnsavedChanges && (
+                <span className="text-xs font-bold text-amber-600 bg-amber-100 px-3 py-1 rounded-full animate-pulse flex items-center gap-1">
+                   <AlertCircle size={12} /> Unsaved Changes
+                </span>
+              )}
+
+              <button 
+                onClick={fetchData}
+                className="p-3 rounded-xl border border-gray-200 text-slate-500 hover:bg-white hover:text-slate-900 transition"
+                title="Discard Changes / Refresh"
+              >
+                <RefreshCw size={20} />
+              </button>
+
+              <button 
+                onClick={saveAll}
+                disabled={saving || !hasUnsavedChanges}
+                className={`
+                  px-8 py-3 rounded-xl font-bold transition shadow-lg flex items-center gap-2
+                  ${hasUnsavedChanges 
+                    ? 'bg-orange-500 text-white hover:bg-orange-600 shadow-orange-500/20 scale-105' 
+                    : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                  }
+                `}
+              >
+                {saving ? <Loader2 className="animate-spin" /> : <><Save size={18} /> Save Changes</>}
+              </button>
+          </div>
         </div>
       </div>
 
@@ -148,7 +174,6 @@ export default function LayoutsPage() {
             <div className="w-full md:w-64 flex-shrink-0">
                <div className="flex items-center justify-between mb-2">
                   <label className="text-xs font-bold uppercase text-slate-400 tracking-wider">Preview Card</label>
-                  {/* Badge showing if text is hidden */}
                   {!cat.show_overlay && (
                     <span className="text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded font-bold">GRAPHIC MODE</span>
                   )}
@@ -162,7 +187,6 @@ export default function LayoutsPage() {
                         alt="Preview" 
                         className={`w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 ${cat.show_overlay ? 'opacity-80' : 'opacity-100'}`} 
                       />
-                      {/* Gradient only shows if Overlay is ON */}
                       {cat.show_overlay && (
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
                       )}
@@ -174,7 +198,6 @@ export default function LayoutsPage() {
                     </div>
                   )}
                   
-                  {/* Text Overlay Preview - Conditioned on show_overlay */}
                   {cat.show_overlay && (
                     <div className="absolute bottom-0 left-0 p-5 w-full">
                        <h4 className="text-2xl font-black text-white leading-none mb-2">{cat.title}</h4>
@@ -201,7 +224,6 @@ export default function LayoutsPage() {
 
                <div className="grid md:grid-cols-2 gap-5">
                    
-                   {/* Text Inputs - Only relevant if overlay is ON (but we leave them editable always just in case) */}
                    <div className={`space-y-1.5 transition-opacity ${!cat.show_overlay ? 'opacity-50' : 'opacity-100'}`}>
                       <label className="text-xs font-bold uppercase text-slate-500">Display Title</label>
                       <input 
@@ -237,7 +259,6 @@ export default function LayoutsPage() {
                       </label>
 
                       <div className="flex items-center gap-4">
-                        {/* Hidden File Input */}
                         <div className="relative">
                            <input 
                               type="file" 
@@ -259,7 +280,7 @@ export default function LayoutsPage() {
                         </div>
 
                         <div className="text-xs text-slate-400 font-medium">
-                           {cat.image_url ? '✅ Image set' : 'No image selected'}
+                           {cat.image_url ? '✅ Image staged (Unsaved)' : 'No image selected'}
                         </div>
                       </div>
                    </div>
@@ -267,12 +288,6 @@ export default function LayoutsPage() {
             </div>
           </div>
         ))}
-
-        {categories.length === 0 && (
-          <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-300">
-             <p className="text-slate-400 font-medium">No categories found. Add some products to see them here.</p>
-          </div>
-        )}
       </div>
     </div>
   );
