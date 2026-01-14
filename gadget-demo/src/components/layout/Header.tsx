@@ -32,10 +32,10 @@ export const Header = () => {
         {/* LOGO */}
         <Link href="/" className="flex items-center gap-0.5 z-50 select-none group">
            <span className="font-black text-2xl md:text-3xl tracking-tighter text-[#00AEEF] group-hover:opacity-80 transition-opacity">
-             Payless
+             Shop
            </span>
            <span className="bg-[#F7931E] text-white px-1.5 py-0.5 font-black text-2xl md:text-3xl tracking-tighter leading-none -mb-1 group-hover:scale-105 transition-transform">
-             4tech
+             Remy
            </span>
         </Link>
 

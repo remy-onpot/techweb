@@ -20,11 +20,11 @@ export const Footer = ({ settings }: { settings: Record<string, string> }) => {
            <div className="space-y-6">
               {/* THE CORRECT LOGO MATCHING HEADER */}
               <Link href="/" className="flex items-center gap-0.5 select-none w-fit">
-                 <span className="font-black text-2xl tracking-tighter text-[#00AEEF]">
-                   Payless
+                 <span className="font-black text-2xl tracking-tighter text-[#228b22]">
+                   Shop
                  </span>
                  <span className="bg-[#F7931E] text-white px-1.5 py-0.5 font-black text-2xl tracking-tighter leading-none -mb-1">
-                   4tech
+                   Raymie
                  </span>
               </Link>
 
@@ -100,7 +100,7 @@ export const Footer = ({ settings }: { settings: Record<string, string> }) => {
         </div>
 
         <div className="border-t border-gray-100 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-xs font-bold text-slate-400 uppercase tracking-wider">
-           <p>&copy; {new Date().getFullYear()} Payless4Tech Ghana. All rights reserved.</p>
+           <p>&copy; {new Date().getFullYear()}shopraymie Ghana. All rights reserved.</p>
            <p>Built with ❤️ in Accra.</p>
         </div>
       </div>

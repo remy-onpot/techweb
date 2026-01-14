@@ -10,7 +10,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Payless4Tech | Premium Gadgets in Ghana",
+  title: "Shop Raymie | Premium website for Ghana",
   description: "Your one-stop shop for UK Used laptops, gaming consoles, and phones. Located at Accra Mall.",
 };
 
