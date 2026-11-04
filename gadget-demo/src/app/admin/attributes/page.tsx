@@ -13,11 +13,6 @@ interface AttributeOption {
   sort_order: number;
 }
 
-interface CategoryMeta {
-  slug: string;
-  title: string;
-}
-
 // Type for the nested structure: Category -> AttributeKey -> List of Options
 type GroupedOptions = Record<string, Record<string, AttributeOption[]>>;
 
@@ -53,8 +48,8 @@ export default function AttributesPage() {
   };
 
   const fetchCategories = async () => {
-    // 1. Get categories from your layouts table
-    const { data: meta } = await supabase.from('category_metadata').select('slug');
+    // 1. Get categories from the catalog taxonomy.
+    const { data: meta } = await supabase.from('categories').select('slug');
     
     // 2. Get categories currently used in attributes (in case some have no layout yet)
     const { data: existingAttrs } = await supabase.from('attribute_options').select('category');

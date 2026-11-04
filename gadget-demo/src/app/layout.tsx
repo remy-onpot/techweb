@@ -1,13 +1,6 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 import { DesktopSuggestion } from '@/components/shop/DesktopSuggestion';
-// 1. Load Inter (Standard for modern e-commerce)
-const inter = Inter({ 
-  subsets: ["latin"],
-  variable: "--font-inter",
-  display: "swap", // Prevents invisible text during load
-});
 
 export const metadata: Metadata = {
   title: "Shop Raymie | Premium website for Ghana",
@@ -20,7 +13,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en">
       <body className="font-sans antialiased bg-[#F8FAFC] text-slate-900 selection:bg-orange-100 selection:text-orange-900">
         {children}
         <DesktopSuggestion /> {/* <-- Drop it here */}

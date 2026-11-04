@@ -1,129 +1,54 @@
-import { supabase } from '@/lib/supabase';
-import { Header } from '@/components/layout/Header';
-import { BrandHero } from '@/components/home/BrandHero'; // Updated import path to shop
-import { HeroGrid } from '@/components/home/HeroGrid';   // Updated import path to shop
-import { FeaturedRow } from '@/components/home/FeaturedRow'; // Updated import path to shop
-import CategoryFeed from '@/components/shop/CategoryFeed'; // <-- NEW DYNAMIC FEED
-import { BranchSlider } from '@/components/home/BranchSlider';
-import { SocialGrid } from '@/components/home/SocialGrid';
-import { Footer } from '@/components/layout/Footer';
-import { Product } from '@/lib/types';
-import { Phone, Facebook, Instagram, Linkedin, MessageCircle, Twitter } from 'lucide-react';
+import Link from 'next/link';
+import { createClient } from '@/lib/supabase/server';
+import { storeConfig } from '@/lib/store-config';
+import type { Json } from '@/lib/database.types';
 
 export const dynamic = 'force-dynamic';
 
+function objectContent(content: Json): Record<string, Json | undefined> {
+  return content !== null && typeof content === 'object' && !Array.isArray(content) ? content : {};
+}
+
+function text(content: Record<string, Json | undefined>, key: string, fallback = '') {
+  return typeof content[key] === 'string' ? content[key] as string : fallback;
+}
+
 export default async function HomePage() {
-  
-  // 1. FETCH DATA
-  const [bannersRes, productsRes, settingsRes] = await Promise.all([
-    supabase.from('banners').select('*').eq('is_active', true),
-    
-    // We only need featured products here now, CategoryFeed handles the rest
-    supabase.from('products')
-      .select('*, images:base_images, price:base_price') 
-      .eq('is_active', true)
-      .eq('isFeatured', true) // Only fetch featured for the top row
-      .order('created_at', { ascending: false })
-      .limit(4),
-
-    supabase.from('site_settings').select('*')
+  const supabase = await createClient();
+  const [{ data: sections }, { data: categories }] = await Promise.all([
+    supabase.from('cms_sections').select('*').eq('is_active', true).order('sort_order').order('slot'),
+    supabase.from('categories').select('id,name,slug,image_url,parent_id').order('name'),
   ]);
+  const categoryMap = new Map((categories ?? []).map((category) => [category.id, category]));
 
-  const banners = bannersRes.data || [];
-  const featuredProducts = (productsRes.data || []) as Product[];
-  
-  const settings = (settingsRes.data || []).reduce((acc: Record<string, string>, curr) => {
-    acc[curr.key] = curr.value;
-    return acc;
-  }, {});
-
-  // SPECIFIC BANNER FILTERS
-  const brandBanners = banners.filter(b => b.slot === 'brand_hero');
-  const heroGridBanners = banners.filter(b => ['main_hero', 'side_top', 'side_bottom'].includes(b.slot));
-  const branchBanners = banners.filter(b => b.slot === 'branch_slider');
-
-  const allSocials = [
-    { id: 'wa', icon: Phone, label: "WhatsApp", color: "text-green-600", bg: "bg-green-50", link: settings['whatsapp_phone'] ? `https://wa.me/${settings['whatsapp_phone']}` : null },
-    { id: 'fb', icon: Facebook, label: "Facebook", color: "text-blue-600", bg: "bg-blue-50", link: settings['social_facebook'] },
-    { id: 'ig', icon: Instagram, label: "Instagram", color: "text-pink-600", bg: "bg-pink-50", link: settings['social_instagram'] },
-    { id: 'x', icon: Twitter, label: "X", color: "text-slate-900", bg: "bg-slate-100", link: settings['social_twitter'] },
-    { id: 'li', icon: Linkedin, label: "LinkedIn", color: "text-blue-700", bg: "bg-blue-50", link: settings['social_linkedin'] },
-  ];
-  const activeSocials = allSocials.filter(s => s.link);
-
-  return (
-    <div className="bg-[#F8FAFC] min-h-screen font-sans">
-       <Header /> 
-
-       <main className="pt-20 md:pt-28 space-y-0 md:space-y-2">
-          
-          {/* 1. BRAND HERO (Cinematic Strip) */}
-          <BrandHero banners={brandBanners} />
-
-          {/* 2. MAIN HERO GRID (Mesh Gradients) */}
-          <HeroGrid banners={heroGridBanners} />
-          
-          {/* 3. FEATURED PRODUCTS */}
-          <FeaturedRow products={featuredProducts} />
-
-          {/* 4. DYNAMIC CATEGORY FEED 
-              Replaces the hardcoded rails. 
-              Automatically creates rails for Laptop, Phone, Tablet, Drone, etc.
-          */}
-          <div className="space-y-4 md:space-y-6 mb-8 md:mb-12">
-            <CategoryFeed />
-          </div>
-
-          <SocialGrid settings={settings} />
-
-          <BranchSlider banners={branchBanners} settings={settings} />
-
-          {/* CONNECT SECTION */}
-          <section className="py-10 md:py-16 bg-gray-50 border-t border-gray-100">
-              <div className="container mx-auto px-4 text-center">
-                 <h3 className="font-black text-lg md:text-2xl text-slate-900 mb-6 md:mb-10">Connect With Us</h3>
-                 {activeSocials.length > 0 ? (
-                   <div className="flex flex-wrap justify-center gap-4 md:gap-10">
-                      {activeSocials.map((social) => (
-                         <a key={social.id} href={social.link!} target="_blank" className="flex flex-col items-center gap-2 group">
-                            <div className={`w-12 h-12 md:w-16 md:h-16 ${social.bg} rounded-2xl flex items-center justify-center border border-transparent group-hover:border-gray-200 shadow-sm transition-all`}>
-                               <social.icon size={20} className={`md:w-7 md:h-7 ${social.color}`} />
-                            </div>
-                            <span className="text-[10px] md:text-sm font-bold text-slate-400 group-hover:text-slate-900">{social.label}</span>
-                         </a>
-                      ))}
-                   </div>
-                 ) : (
-                    <p className="text-slate-400 text-sm italic">Social links coming soon.</p>
-                 )}
-              </div>
-          </section>
-
-          {/* REQUEST CTA */}
-          <section className="py-12 md:py-20 px-4 bg-white">
-            <div className="container mx-auto max-w-7xl">
-              <div className="bg-[#F8FAFC] rounded-3xl md:rounded-[2.5rem] p-6 md:p-16 border border-gray-100 flex flex-col md:flex-row items-center justify-between gap-6 md:gap-10 text-center md:text-left">
-                 <div className="max-w-2xl">
-                    <div className="inline-flex items-center gap-2 text-orange-600 font-bold tracking-widest text-[10px] md:text-xs uppercase mb-3">
-                      <span className="w-1.5 h-1.5 rounded-full bg-orange-600 animate-pulse"/> Global Shipping
-                    </div>
-                    <h2 className="text-2xl md:text-5xl font-black text-slate-900 mb-2 md:mb-6 leading-tight">Can't find it?</h2>
-                    <p className="text-slate-500 text-sm md:text-lg leading-relaxed">We import specific requests directly from the USA & UK. <span className="block mt-1">Delivered in <strong>14-21 days</strong>.</span></p>
-                 </div>
-                 <div className="flex-shrink-0 w-full md:w-auto">
-                    {settings['whatsapp_phone'] && (
-                      <a href={`https://wa.me/${settings['whatsapp_phone']}?text=Requesting...`} target="_blank" className="w-full md:w-auto bg-[#0A2540] text-white px-8 py-4 rounded-xl font-bold text-sm md:text-lg hover:scale-105 transition-transform shadow-lg shadow-slate-900/10 flex items-center justify-center gap-3">
-                        Start Request <MessageCircle size={18} />
-                      </a>
-                    )}
-                 </div>
-              </div>
-            </div>
-          </section>
-
-       </main>
-
-       <Footer settings={settings} />
-    </div>
-  );
+  return <main className="min-h-screen bg-slate-50 text-slate-900">
+    <header className="sticky top-0 z-20 border-b bg-white/95 backdrop-blur">
+      <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4"><Link href="/" className="text-xl font-black">{storeConfig.name}</Link><nav className="flex gap-4 text-sm font-bold"><Link href="/category/all">Shop</Link><Link href="/cart">Cart</Link></nav></div>
+    </header>
+    {(sections ?? []).map((section) => {
+      const content = objectContent(section.content);
+      if (section.section_type === 'announcement') return <div key={section.id} className="bg-slate-900 px-4 py-2 text-center text-sm font-semibold text-white">{text(content, 'text')}</div>;
+      if (section.section_type === 'hero_banner') {
+        const imageUrl = text(content, 'image_url');
+        return <section key={section.id} className="relative isolate mx-auto flex min-h-[320px] max-w-7xl items-center overflow-hidden bg-slate-900 px-6 py-16 text-white md:min-h-[480px] md:rounded-b-3xl md:px-16">
+          {imageUrl && <img src={imageUrl} alt="" className="absolute inset-0 -z-10 h-full w-full object-cover opacity-50" />}
+          <div className="max-w-2xl"><p className="mb-3 text-sm font-bold uppercase tracking-[0.2em]">{storeConfig.name}</p><h1 className="text-4xl font-black md:text-6xl">{text(content, 'title', 'Welcome to our store')}</h1><p className="mt-4 max-w-xl text-lg text-white/80">{text(content, 'description')}</p>{text(content, 'cta_text') && <Link href={text(content, 'link_url', '/category/all')} className="mt-7 inline-flex rounded-xl bg-white px-6 py-3 font-bold text-slate-900">{text(content, 'cta_text')}</Link>}</div>
+        </section>;
+      }
+      if (section.section_type === 'featured_category') {
+        const requestedIds = [content.category_id, ...(Array.isArray(content.category_ids) ? content.category_ids : [])].filter((id): id is string => typeof id === 'string');
+        const chosen = requestedIds.map((id) => categoryMap.get(id)).filter((category): category is NonNullable<typeof category> => Boolean(category));
+        const image = text(content, 'image_url') || chosen[0]?.image_url || '';
+        return <section key={section.id} className="mx-auto max-w-7xl px-4 py-8"><Link href={text(content, 'link_url', chosen[0] ? `/category/${chosen[0].slug}` : '/category/all')} className="group relative block min-h-56 overflow-hidden rounded-3xl bg-orange-100 p-8">
+          {image && <img src={image} alt="" className="absolute inset-0 h-full w-full object-cover transition group-hover:scale-[1.02]" />}
+          <div className="relative rounded-xl bg-white/85 p-5 backdrop-blur-sm md:max-w-md"><h2 className="text-2xl font-black">{text(content, 'title', chosen.map((category) => category.name).join(', ') || 'Featured categories')}</h2><p className="mt-2 text-sm text-slate-600">{chosen.map((category) => category.name).join(' · ')}</p></div>
+        </Link></section>;
+      }
+      const background = text(content, 'background_color', '#0A2540');
+      const foreground = text(content, 'text_color', '#ffffff');
+      return <section key={section.id} className="mx-auto my-8 max-w-7xl rounded-3xl px-6 py-12 md:px-12" style={{ backgroundColor: background, color: foreground }}><h2 className="text-3xl font-black">{text(content, 'title')}</h2><p className="mt-3 max-w-3xl">{text(content, 'description')}</p></section>;
+    })}
+    {(!sections || sections.length === 0) && <section className="mx-auto max-w-7xl px-5 py-24 text-center"><h1 className="text-4xl font-black">{storeConfig.name}</h1><p className="mt-3 text-slate-500">Your store is ready for its first CMS section.</p></section>}
+    <footer className="mt-16 border-t bg-white px-4 py-8 text-center text-sm text-slate-500">{storeConfig.name}</footer>
+  </main>;
 }

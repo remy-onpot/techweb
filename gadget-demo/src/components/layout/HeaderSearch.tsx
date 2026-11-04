@@ -4,12 +4,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, X, Loader2, ArrowRight, MessageCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { Product } from '@/lib/types';
 import Link from 'next/link';
+import { formatMoney } from '@/lib/format-money';
+
+interface SearchProduct { id: string; title: string; slug: string; base_images: string[]; price: number }
 
 export const HeaderSearch = ({ isMobile = false, onClose }: { isMobile?: boolean, onClose?: () => void }) => {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<Product[]>([]);
+  const [results, setResults] = useState<SearchProduct[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -40,17 +42,18 @@ export const HeaderSearch = ({ isMobile = false, onClose }: { isMobile?: boolean
 
       const { data } = await supabase
         .from('products')
-        .select('*, images:base_images, variants:product_variants(price)')
+        .select('id,title,slug,base_images,product_variants(price)')
         .eq('is_active', true)
-        .or(`name.ilike.%${query}%,category.ilike.%${query}%,brand.ilike.%${query}%`)
+        .ilike('title', `%${query}%`)
         .limit(5); // Only show top 5 suggestions
 
       if (data) {
-        // Normalize data
-        const cleanData = data.map((p: any) => ({
-           ...p,
-           price: p.variants?.[0]?.price || p.base_price || 0,
-           images: p.images || []
+        const cleanData = data.map((product) => ({
+          id: product.id,
+          title: product.title,
+          slug: product.slug,
+          base_images: product.base_images,
+          price: product.product_variants.length ? Math.min(...product.product_variants.map((variant) => variant.price)) : 0,
         }));
         setResults(cleanData);
       }
@@ -115,17 +118,17 @@ export const HeaderSearch = ({ isMobile = false, onClose }: { isMobile?: boolean
                       className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors group/item"
                     >
                        <div className="w-10 h-10 rounded-lg bg-gray-100 flex-shrink-0 overflow-hidden border border-gray-100">
-                          {product.images?.[0] ? (
-                            <img src={product.images[0]} alt={product.name} className="w-full h-full object-cover" />
+                      {product.base_images?.[0] ? (
+                            <img src={product.base_images[0]} alt={product.title} className="w-full h-full object-cover" />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center text-gray-300"><Search size={14}/></div>
                           )}
                        </div>
                        <div className="flex-1 min-w-0">
                           <h4 className="text-sm font-bold text-slate-700 truncate group-hover/item:text-orange-600 transition-colors">
-                            {product.name}
+                            {product.title}
                           </h4>
-                          <p className="text-xs text-gray-400">GHS {product.price?.toLocaleString()}</p>
+                          <p className="text-xs text-gray-400">{formatMoney(product.price || 0)}</p>
                        </div>
                        <ArrowRight size={14} className="text-gray-300 -translate-x-2 opacity-0 group-hover/item:opacity-100 group-hover/item:translate-x-0 transition-all" />
                     </Link>

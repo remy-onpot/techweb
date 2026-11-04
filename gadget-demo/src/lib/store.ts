@@ -1,43 +1,27 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import { Product, Banner, Variant } from './types';
-import { supabase } from './supabase';
+import { createJSONStorage, persist } from 'zustand/middleware';
+import type { Product, Variant } from './types';
 
-// 1. DEFINE CART ITEM
 export interface CartItem {
-  uniqueId: string; // usually variant.id
-  product: Product; // Parent info
-  variant: Variant; // Specific info
+  productId: string;
+  variantId: string;
+  title: string;
+  variantTitle: string;
+  sku: string | null;
+  /** Integer price in pesewas. */
+  unitPrice: number;
+  image: string;
   quantity: number;
-  selected: boolean; // <--- Tracks checkbox state
 }
 
 interface StoreState {
-  // Data State
-  products: Product[];
-  banners: Banner[];
-  settings: Record<string, string>;
-
-  // Cart State
   cart: CartItem[];
   isCartOpen: boolean;
-
-  // UI State
   isAdminMode: boolean;
-  isLoading: boolean;
-
-  // Actions
-  fetchStoreData: () => Promise<void>;
   addToCart: (product: Product, variant: Variant) => void;
   removeFromCart: (variantId: string) => void;
   updateQuantity: (variantId: string, delta: number) => void;
-  
-  // Selection Actions (New)
-  toggleItemSelection: (variantId: string) => void;
-  toggleAllSelection: (isSelected: boolean) => void;
-  removeSelected: () => void; // Used after checkout
-  clearCart: () => void;      // Used for full reset
-
+  clearCart: () => void;
   toggleAdmin: () => void;
   toggleCart: (isOpen?: boolean) => void;
 }
@@ -45,139 +29,49 @@ interface StoreState {
 export const useStore = create<StoreState>()(
   persist(
     (set, get) => ({
-      products: [],
-      banners: [],
-      settings: {},
       cart: [],
       isCartOpen: false,
       isAdminMode: false,
-      isLoading: false,
-
       toggleAdmin: () => set((state) => ({ isAdminMode: !state.isAdminMode })),
       toggleCart: (isOpen) => set((state) => ({ isCartOpen: isOpen ?? !state.isCartOpen })),
-
-      // --- 🛒 CART LOGIC ---
       addToCart: (product, variant) => {
         const currentCart = get().cart;
-        const existingItem = currentCart.find((item) => item.uniqueId === variant.id);
-
-        if (existingItem) {
-          // Check Stock
-          if (existingItem.quantity >= variant.stock) {
-             alert(`Only ${variant.stock} units available!`);
-             return;
-          }
-
-          set({
-            cart: currentCart.map((item) =>
-              item.uniqueId === variant.id
-                ? { ...item, quantity: item.quantity + 1, selected: true } // Auto re-select
-                : item
-            ),
-            isCartOpen: true 
-          });
-        } else {
-          // New Item
-          set({
-            cart: [
-              ...currentCart,
-              {
-                uniqueId: variant.id,
-                product,
-                variant,
-                quantity: 1,
-                selected: true, // Auto-select new items
-              },
-            ],
-            isCartOpen: true
-          });
+        const existing = currentCart.find((item) => item.variantId === variant.id);
+        if (existing && existing.quantity >= variant.stock) {
+          alert(`Only ${variant.stock} units available!`);
+          return;
         }
+        const item: CartItem = {
+          productId: product.id,
+          variantId: variant.id,
+          title: product.name,
+          variantTitle: variant.condition,
+          sku: variant.sku ?? null,
+          unitPrice: variant.price,
+          image: variant.images?.[0] || product.images[0] || '',
+          quantity: 1,
+        };
+        set({
+          cart: existing
+            ? currentCart.map((cartItem) => cartItem.variantId === variant.id ? { ...cartItem, quantity: cartItem.quantity + 1 } : cartItem)
+            : [...currentCart, item],
+          isCartOpen: true,
+        });
       },
-
-      removeFromCart: (variantId) =>
-        set((state) => ({
-          cart: state.cart.filter((item) => item.uniqueId !== variantId),
-        })),
-
-      updateQuantity: (variantId, delta) =>
-        set((state) => ({
-          cart: state.cart
-            .map((item) => {
-              if (item.uniqueId === variantId) {
-                const newQty = item.quantity + delta;
-                return { ...item, quantity: newQty };
-              }
-              return item;
-            })
-            .filter((item) => item.quantity > 0),
-        })),
-
-      // --- ✅ SELECTION LOGIC ---
-      toggleItemSelection: (id) => 
-        set((state) => ({
-          cart: state.cart.map(item => 
-            item.uniqueId === id ? { ...item, selected: !item.selected } : item
-          )
-        })),
-
-      toggleAllSelection: (isSelected) => 
-        set((state) => ({
-          cart: state.cart.map(item => ({ ...item, selected: isSelected }))
-        })),
-
-      removeSelected: () => 
-        set((state) => ({
-          cart: state.cart.filter(item => !item.selected)
-        })),
-
+      removeFromCart: (variantId) => set((state) => ({ cart: state.cart.filter((item) => item.variantId !== variantId) })),
+      updateQuantity: (variantId, delta) => set((state) => ({
+        cart: state.cart
+          .map((item) => item.variantId === variantId ? { ...item, quantity: item.quantity + delta } : item)
+          .filter((item) => item.quantity > 0),
+      })),
       clearCart: () => set({ cart: [] }),
-
-      // --- 🌍 DATA FETCHING ---
-      fetchStoreData: async () => {
-        set({ isLoading: true });
-
-        try {
-          // Parallel Fetching for speed
-          const [productsRes, bannersRes, settingsRes] = await Promise.all([
-            supabase
-              .from('products')
-              .select('*, images:base_images, price:base_price') // MAP COLUMNS HERE
-              .eq('is_active', true)
-              .order('created_at', { ascending: false }),
-            
-            supabase
-              .from('banners')
-              .select('*')
-              .eq('is_active', true),
-            
-            supabase
-              .from('site_settings')
-              .select('*')
-          ]);
-
-          // Process Settings into Object
-          const settingsMap = (settingsRes.data || []).reduce((acc: any, curr: any) => {
-            acc[curr.key] = curr.value;
-            return acc;
-          }, {});
-
-          set({
-            products: (productsRes.data as any) || [],
-            banners: (bannersRes.data as any) || [],
-            settings: settingsMap,
-            isLoading: false,
-          });
-
-        } catch (e) {
-          console.error('Error loading store data', e);
-          set({ isLoading: false });
-        }
-      },
     }),
     {
       name: 'payless-storage',
+      version: 2,
+      migrate: () => ({ cart: [], isAdminMode: false }),
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({ cart: state.cart, isAdminMode: state.isAdminMode }),
-    }
-  )
+    },
+  ),
 );

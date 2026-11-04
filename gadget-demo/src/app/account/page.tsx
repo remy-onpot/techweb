@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { User, Lock, Package, Save, Loader2, LogOut, Phone, MapPin, Mail, Calendar, ChevronRight, ShieldCheck } from 'lucide-react';
+import { formatMoney } from '@/lib/format-money';
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -314,7 +315,7 @@ export default function ProfilePage() {
                                    }`}>
                                       {order.status}
                                    </span>
-                                   <p className="font-black text-slate-900 mt-1">₵{order.total_amount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                   <p className="font-black text-slate-900 mt-1">{formatMoney(order.total_amount || 0)}</p>
                                 </div>
                                 <ChevronRight className="text-slate-300 group-hover:text-orange-500 transition-colors" size={20} />
                              </div>

@@ -1,6 +1,6 @@
 "use client";
 import React from 'react';
-import { LayoutDashboard, Package, Image as ImageIcon, Users, LogOut, Layers, Sliders, Settings, ShoppingBag } from 'lucide-react';
+import { LayoutDashboard, Package, LogOut, Layers, Sliders, ShoppingBag } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { MobileExperiencePrompt } from '@/components/ui/MobileExperiencePrompt';
@@ -26,9 +26,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <NavItem href="/admin/attributes" active={pathname === '/admin/attributes'} icon={<Sliders size={20} />} label="Attributes" />
           
           <p className="text-xs font-bold text-slate-500 uppercase px-4 mt-6 mb-1">Design</p>
-          <NavItem href="/admin/banners" active={pathname === '/admin/banners'} icon={<ImageIcon size={20} />} label="Banners" />
-          <NavItem href="/admin/layouts" active={pathname === '/admin/layouts'} icon={<Layers size={20} />} label="Category Layouts" />
-          <NavItem href="/admin/settings" active={pathname === '/admin/settings'} icon={<Settings size={20} />} label="Site Settings" />
+          <NavItem href="/admin/store-builder" active={pathname === '/admin/store-builder'} icon={<Layers size={20} />} label="Store Builder" />
         </nav>
 
         <div className="p-4 border-t border-slate-700">
